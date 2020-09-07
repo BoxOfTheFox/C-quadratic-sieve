@@ -144,12 +144,11 @@ unsigned long getBSmooth(mpz_t n){
     x = sqrt(x) * 0.5;
     x = pow(2.71, x);
 
-    wynik = ceil(x)+20;
+    wynik = ceil(x);
     return wynik;
 }
 
 void poly(mpz_t *wynik, unsigned long x, mpz_t b, mpz_t N){
-    //printf("%lu\n",x);
     mpz_set_ui(*wynik,x);
     mpz_add(*wynik,*wynik,b);
     mpz_pow_ui(*wynik,*wynik,2);
@@ -187,7 +186,7 @@ bool notIn(unsigned char *exp, List list, unsigned long needed) {
     return true;
 }
 
-void wyswietl(Data dat){
+void show(Data dat){
     printf("%lu ",dat.ul);
 }
 
@@ -297,23 +296,22 @@ void findLinearDeps(List *ret, unsigned long row, unsigned long needed, unsigned
     ListClear(&current_sum);
 }
 
-void testdep(mpz_t *gcd, List *dep, List smooth_vals, mpz_t N) {
+void testdep(mpz_t *gcd, List dep, List smooth_vals, mpz_t N) {
     mpz_t x,y;
     mpz_init_set_ui(x,1);
     mpz_init_set_ui(y,1);
-    List *tmp = dep;
-    while (hasNext(*tmp)){
+    while (hasNext(dep)){
         unsigned long i = 0;
         List tmp2 = smooth_vals;
         while (true){
-            if (i++ == (*tmp)->data.ul){
+            if (i++ == dep->data.ul){
                 mpz_mul(x,x,tmp2->data.smoothVals.vals[0]);
                 mpz_mul(y,y,tmp2->data.smoothVals.vals[1]);
                 break;
             }
             tmp2 = next(&tmp2);
         }
-        *tmp = next(tmp);
+        dep = next(&dep);
     }
     mpz_sqrt(y,y);
     mpz_sub(x,x,y);
@@ -323,9 +321,35 @@ void testdep(mpz_t *gcd, List *dep, List smooth_vals, mpz_t N) {
 }
 
 int main(int argc, char *argv[]) {
-    if(argc<2){
-        fprintf(stderr,"Sposob uzycia programu - %s [liczba]\n",argv[0]);
+    unsigned long over_smooth=20, sieve_interval=100000;
+    if(argc<2) {
+        fprintf(stderr, "HOWTO - %s [number] [args]\n", argv[0]);
         exit(0);
+    }else if(argc>2){
+        if(strncmp(argv[2],"--interval=",11)==0) {
+            sieve_interval=strtol(&argv[2][11],NULL,10);
+
+            if(argc>3 && strncmp(argv[3],"--over_smooth=",14)==0) {
+                over_smooth=strtol(&argv[3][14],NULL,10);
+            }
+        }else if(strncmp(argv[2],"--over_smooth=",14)==0){
+            over_smooth=strtol(&argv[2][14],NULL,10);
+
+            if(argc>3 && strncmp(argv[3],"--interval=",11)==0) {
+                sieve_interval=strtol(&argv[3][11],NULL,10);
+            }
+        }
+    }else{
+        if(strcmp(argv[1],"--help")==0 || strcmp(argv[1],"-h")==0) {
+            puts("Program factors unsigned integer number using quadratic sieve and displays possible solution.");
+            puts("It aims to achieve prime number but may fail to do so. In such case you can try adjusting arguments.");
+            puts("Possible arguments:");
+            puts("--over_smooth=[number] - adds number to bound value (default is 20)");
+            puts("--interval=[number] - sets interval value (default is 10 000)");
+            puts("--help - displays help");
+            exit(0);
+        }
+
     }
 
     mpz_t N;
@@ -336,7 +360,8 @@ int main(int argc, char *argv[]) {
     mpz_sqrt(b,N);
     mpz_add_ui(b,b,1);
 
-    unsigned long bound = getBSmooth(N);
+    unsigned long bound = getBSmooth(N) + over_smooth;
+    printf("%lu\n",bound);
 
     List baseTemp;
     ListInit(&baseTemp);
@@ -353,9 +378,11 @@ int main(int argc, char *argv[]) {
     ListClear(&baseTemp);
 
     unsigned long needed = sizeof(base) / sizeof(unsigned long);
-    unsigned long sieve_start=0,sieve_stop=0,sieve_interval=100000;
+    unsigned long sieve_start=0,sieve_stop=0;
     unsigned long start_vals[needed][2];
-    mpz_t interval[sieve_interval];
+//    mpz_t interval[sieve_interval]; this doesn't seem to work with sizes over 100000
+    mpz_t *interval;
+    interval = malloc(sieve_interval*sizeof(mpz_t));
     for (unsigned long i = 0; i < sieve_interval; ++i) {
         mpz_init(interval[i]);
     }
@@ -439,6 +466,7 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < sieve_interval; ++i) {
         mpz_clear(interval[i]);
     }
+    free(interval);
 
     printf("\n==\nRunning Gaussian Elimination\n==\n\n");
 
@@ -475,18 +503,28 @@ int main(int argc, char *argv[]) {
         if(!marks[i]){
             findLinearDeps(&deps,i,needed,M,sizeof(marks) / sizeof(bool));
             List dep = deps;
+            puts("");
             while (hasNext(dep)) {
-                ListIterate(&dep->data.innerList, &wyswietl);
+                ListIterate(&dep->data.innerList, &show);
                 puts("");
                 mpz_t gcd;
                 mpz_init(gcd);
-                testdep(&gcd, &dep->data.innerList, smooth_vals, N);
+                testdep(&gcd, dep->data.innerList, smooth_vals, N);
                 if (mpz_cmp_ui(gcd,1)!=0 && mpz_cmp(gcd,N)){
                     gmp_printf("\nNon-trivial factor: %Zd\n",gcd);
 
                     mpz_clear(N);
                     mpz_clear(temp);
+                    mpz_clear(gcd);
+
+                    wsk = smooth_vals;
+                    while (hasNext(wsk)){
+                        mpz_clear(wsk->data.smoothVals.vals[0]);
+                        mpz_clear(wsk->data.smoothVals.vals[1]);
+                        wsk=next(&wsk);
+                    }
                     ListClear(&smooth_vals);
+
                     dep = deps;
                     while (hasNext(dep)){
                         ListClear(&dep->data.innerList);

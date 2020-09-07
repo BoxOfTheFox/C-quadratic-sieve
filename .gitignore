@@ -7,3 +7,6 @@
 /Makefile
 /quadratic-sieve
 /output.csv
+/liblgmp.a
+/liblm.a
+/sieve.log
